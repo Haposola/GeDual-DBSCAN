@@ -97,19 +97,20 @@ public:
 	double& FurthestDescendantDistance() {
 		return furthestDescendantDistance;
 	}
-	bool IsExpanded() {
+	bool IsExpanded()const {
+		return isExpanded;
+	}
+	bool& IsExpanded() {
 		return isExpanded;
 	}
 	void Expand();
 	void add_descendant(size_t index, double dist);
 	void setup_info();
 private:
-#ifdef CTL_USE_SET
-	std::unordered_set<size_t> descendants;//May be slow
-#endif
-#ifdef CTL_USE_VECTOR
+
+
 	std::vector<size_t> descendants;
-#endif
+
 
 	//std::unordered_map<size_t, double> desc_distances;
 	bool isExpanded;
@@ -129,7 +130,7 @@ private:
 	size_t numDescendants;
 	//! The parent node (NULL if this is the root of the tree).
 	CoverTree_Lazy* parent;
-	
+
 	//! Distance to the furthest descendant.
 	double furthestDescendantDistance;
 
@@ -141,8 +142,8 @@ private:
 #ifdef CTL_USE_VECTOR
 	void add_child(size_t index, size_t& pointLeft);
 #endif
-	
-	
+
+
 	//CoverTree_Lazy* create_childptr(size_t index);
 };
 #include "CoverTree_Lazy_impl.h"
