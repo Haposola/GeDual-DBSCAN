@@ -1,12 +1,18 @@
-# EMEC-DBSCAN
+# GeDual-DBSCAN
 
-EMEC-DBSCAN: DBSCAN algorithm using Eps-Minpts and Eps-Connectivity query
+GeDual-DBSCAN: A generalized dual-tree algorithm for DBSCAN
 
-The Eps-Minpts query is based on MLPACK https://mlpack.org/
+The implementation is based on KDTree of MLPACK https://mlpack.org/
 
 So you must have MLPACK installed to compile these files here.
 
-# Input data format
+## Algorithm variants
+
+This repo contains tree variants, postfixed by Basic, InterCases and Transitions, respectively.
+
+The last variant, GeDual-DBSCAN-Transitions, is the most powerful.
+
+## Input data format
 
 any format that compatible with arma::mat
 
@@ -24,8 +30,8 @@ e.g., three point in dimension 4:
 
 # command line parameters:
 
-$1 $2 $3
+$1 $2 $3 $4
 
-$1: dbscan_minpts, $2: dbscan_eps, $3: output_file_name
+$1: dbscan_eps, $2: dbscan_minpts, $3: input_file_neme, $4: output_file_name
 
-Change the command line parameters in DBSCAN_DualTraversals.cpp::main() if your want.
+Change the command line parameters in GeDual-DBSCAN-postfix.cpp::main() if your want.
