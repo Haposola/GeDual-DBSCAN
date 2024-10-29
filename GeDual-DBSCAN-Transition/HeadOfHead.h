@@ -14,6 +14,7 @@
 #endif
 //#define DEBUG
 
+#define TEST_STATISTICS
 
 #include "TimeMacros.h"
 

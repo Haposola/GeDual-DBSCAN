@@ -13,12 +13,12 @@
 #include <mlpack.hpp>
 #endif
 
-
+#define TEST_STATISTICS
 
 #include "TimeMacros.h"
 
 
 
-#include "DBSCAN_Simulation.h"
+#include "GeDual_DBSCAN.h"
 #include "test_codes.h"
 

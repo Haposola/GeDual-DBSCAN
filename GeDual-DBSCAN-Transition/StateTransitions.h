@@ -55,6 +55,9 @@ inline bool GeDual_DBSCAN::checkOnecluster(KDTreeHere* node, bool force) {
 			size_t p2 = oldFromNew[j];
 			if (ufset.Find(p1) == ufset.Find(p2)) continue;
 			double dist = mlpack::EuclideanDistance::Evaluate(dataset.unsafe_col(p1), dataset.unsafe_col(p2));
+#if defined TEST_STATISTICS
+			num_dist_compute++;
+#endif
 			if (dist <= dbscan_eps) ufset.Union(p1, p2);
 		}
 	}
@@ -73,6 +76,9 @@ inline bool GeDual_DBSCAN::checkOnecluster(KDTreeHere* node, bool force) {
 
 
 inline void GeDual_DBSCAN::NodeTransite_toAllcore(KDTreeHere* node) {
+#if defined TEST_STATISTICS
+	num_node_toAllCore++;
+#endif
 	node->Stat().setAllcore();
 	node->Stat().setNumCore(node->Count());
 	if (checkOnecluster(node)) {
@@ -80,6 +86,9 @@ inline void GeDual_DBSCAN::NodeTransite_toAllcore(KDTreeHere* node) {
 	}
 }
 inline void GeDual_DBSCAN::NodeTransite_toDense(KDTreeHere* node) {
+#if defined TEST_STATISTICS
+	num_node_toDense++;
+#endif
 	node->Stat().setDense();
 	
 }
@@ -103,9 +112,15 @@ inline void GeDual_DBSCAN::NodeTransite_toDense(KDTreeHere* queryNode, KDTreeHer
 					// The other side, node->Begin+Count> not_ancestor->Begin+count need not to be checked, 
 					// The case node->Begin+Count> not_ancestor->Begin+count is impossible since queryNode->Begin<refNode.Begin
 					mlpack::RangeType<double> lr_range = parent->Left()->RangeDistance(*parent->Right());
+#if defined TEST_STATISTICS
+					num_Score++; num_dist_compute += 2;
+#endif
 					if (lr_range.Hi() <= dbscan_eps) {
 						ufset.Union(leftRep, rightRep);
 						parent->Stat().setDense();
+#if defined TEST_STATISTICS
+						num_node_toDense++;
+#endif
 						parent = parent->Parent();
 					} else if (lr_range.Lo() <= dbscan_eps) {
 						bool found = false;
@@ -113,6 +128,9 @@ inline void GeDual_DBSCAN::NodeTransite_toDense(KDTreeHere* queryNode, KDTreeHer
 						if (found) {
 							ufset.Union(leftRep, rightRep);
 							parent->Stat().setDense();
+#if defined TEST_STATISTICS
+							num_node_toDense++;
+#endif
 							parent = parent->Parent();
 						} else break;
 					} else break;

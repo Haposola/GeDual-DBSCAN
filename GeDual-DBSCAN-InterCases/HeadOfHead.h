@@ -13,7 +13,7 @@
 #include <mlpack.hpp>
 #endif
 
-
+#define TEST_STATISTICS
 
 #include "TimeMacros.h"
 

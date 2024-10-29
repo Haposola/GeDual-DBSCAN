@@ -2,7 +2,17 @@
 inline void GeDual_DBSCAN::BaseCase_PointwiseEpsminpts(size_t queryPoint, size_t refPoint) {
 	if (isCore[queryPoint]) {
 		//skip intra-cluster distance computation
-		if (ufset.Find(queryPoint) == ufset.Find(refPoint)) return;
+#if defined  TEST_STATISTICS
+		if (ufset.Find(queryPoint) == ufset.Find(refPoint)) {
+			num_samecluster_skip++;
+			return;
+		} else {
+			num_dist_compute++; num_pointwise_dist_compute++;
+		}
+
+#else 
+		if (ufset.Find(queryPoint) == ufset.Find(refPoint))	return;
+#endif
 		if (mlpack::EuclideanDistance::Evaluate(dataset.unsafe_col(queryPoint), dataset.unsafe_col(refPoint)) <= dbscan_eps) {
 			if (isCore[refPoint]) ufset.Union(queryPoint, refPoint);
 			else {
@@ -13,6 +23,9 @@ inline void GeDual_DBSCAN::BaseCase_PointwiseEpsminpts(size_t queryPoint, size_t
 				epsNeighbors[refPoint].push_back(queryPoint);
 				//if refPoints is changed into a core-point, conduct not-yet-done merge.
 				if (++numNeighbors[refPoint] >= dbscan_minpts) {
+#if defined  TEST_STATISTICS
+					num_early_core++;
+#endif
 					PointTransite_toCore(refPoint);
 				}
 			}
@@ -35,6 +48,9 @@ inline void GeDual_DBSCAN::BaseCase_PointwiseEpsminpts(size_t queryPoint, size_t
 
 
 void GeDual_DBSCAN::BaseCase_NoDistCompute(KDTreeHere* queryNode, KDTreeHere* refNode) {
+#if defined  TEST_STATISTICS
+	num_near_case++;
+#endif
 	size_t queryEnd = queryNode->Begin() + queryNode->Count();
 	size_t refEnd = refNode->Begin() + refNode->Count();
 	//first change non-core to cores if possible
@@ -65,6 +81,9 @@ void GeDual_DBSCAN::BaseCase_NoDistCompute(KDTreeHere* queryNode, KDTreeHere* re
 			if (!isCore[refPoint]) {
 				numNeighbors[refPoint] += queryNode->Count();
 				if (numNeighbors[refPoint] >= dbscan_minpts) {
+#if defined  TEST_STATISTICS
+					num_early_core++;
+#endif
 					PointTransite_toCore(refPoint);
 					//NodeTransite_incNumCore(refNode);
 				} else {
@@ -103,11 +122,17 @@ void GeDual_DBSCAN::BaseCase_NoDistCompute(KDTreeHere* queryNode, KDTreeHere* re
 // find enough eps-neighbors for the point be become a core-point
 // then interrupt the search immediately and merge core-point with dense-node
 void GeDual_DBSCAN::BaseCase_EpsMinptsInDense_single(size_t point, KDTreeHere* node, bool& become_core) {
+#if defined  TEST_STATISTICS
+	num_epsminpts_indense++;
+#endif
 	if (node->IsLeaf()) {
 		size_t refEnd = node->Begin() + node->Count();
 		for (size_t i = node->Begin(); i < refEnd; i++) {
 			size_t refPoint = oldFromNew[i];
 			double dist = mlpack::EuclideanDistance::Evaluate(dataset.unsafe_col(point), dataset.unsafe_col(refPoint));
+#if defined  TEST_STATISTICS
+			num_dist_compute++; num_pointwise_dist_compute++;
+#endif
 			if (dist <= dbscan_eps) {
 				if (++numNeighbors[point] >= dbscan_minpts) {
 					become_core = true;
@@ -120,7 +145,13 @@ void GeDual_DBSCAN::BaseCase_EpsMinptsInDense_single(size_t point, KDTreeHere* n
 	} else {
 		bool leftValid = true;
 		mlpack::RangeType<double> l_range = node->Left()->RangeDistance(dataset.unsafe_col(point));
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (l_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			leftValid = false;
 			numNeighbors[point] += node->Left()->Count();
 			if (numNeighbors[point] >= dbscan_minpts) {
@@ -133,11 +164,22 @@ void GeDual_DBSCAN::BaseCase_EpsMinptsInDense_single(size_t point, KDTreeHere* n
 				}
 			}
 		}
-		if (l_range.Lo() > dbscan_eps) leftValid = false;
+		if (l_range.Lo() > dbscan_eps) {
+			leftValid = false;
+#if defined  TEST_STATISTICS
+			num_far_case++;
+#endif
+		}
 
 		bool rightValid = true;
 		mlpack::RangeType<double> r_range = node->Right()->RangeDistance(dataset.unsafe_col(point));
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (r_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			rightValid = false;
 			numNeighbors[point] += node->Right()->Count();
 			if (numNeighbors[point] >= dbscan_minpts) {
@@ -150,7 +192,13 @@ void GeDual_DBSCAN::BaseCase_EpsMinptsInDense_single(size_t point, KDTreeHere* n
 				}
 			}
 		}
-		if (r_range.Lo() > dbscan_eps) rightValid = false;
+		if (r_range.Lo() > dbscan_eps) {
+			rightValid = false;
+#if defined  TEST_STATISTICS
+			num_far_case++;
+#endif
+		}
+
 		if (leftValid && rightValid) {
 			if (r_range.Lo() < l_range.Lo()) {
 				//visit right first
@@ -174,21 +222,39 @@ void GeDual_DBSCAN::BaseCase_EpsMinptsInDense_single(size_t point, KDTreeHere* n
 }
 //Invoked in QueryDenseRefLeaf or QueryLeafRefDense, when point is core-point
 void GeDual_DBSCAN::BaseCase_EpsConnect_single(size_t point, KDTreeHere* node, bool& found) {
+#if defined  TEST_STATISTICS
+	num_epsconnect_single++;
+#endif
 	if (node->IsLeaf()) {
 		size_t refEnd = node->Begin() + node->Count();
 		for (size_t i = node->Begin(); i < refEnd; i++) {
 			double dist = mlpack::EuclideanDistance::Evaluate(dataset.unsafe_col(point), dataset.unsafe_col(oldFromNew[i]));
+#if defined  TEST_STATISTICS
+			num_dist_compute++; num_pointwise_dist_compute++;
+#endif
 			if (dist <= dbscan_eps) {
 				found = true; return;
 			}
 		}
 	} else {
 		mlpack::RangeType<double> l_range = node->Left()->RangeDistance(dataset.unsafe_col(point));
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (l_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		}
 		mlpack::RangeType<double> r_range = node->Right()->RangeDistance(dataset.unsafe_col(point));
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (r_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		}
 		if (r_range.Lo() < l_range.Lo()) {
@@ -215,12 +281,18 @@ void GeDual_DBSCAN::BaseCase_EpsConnect_single(size_t point, KDTreeHere* node, b
 
 
 void GeDual_DBSCAN::BaseCase_EpsConnect_dual(KDTreeHere* queryNode, KDTreeHere* refNode, bool& found) {
+#if defined  TEST_STATISTICS
+	num_epsconnect_dual++;
+#endif
 	if (queryNode->IsLeaf() && refNode->IsLeaf()) {
 		size_t queryEnd = queryNode->Begin() + queryNode->Count();
 		size_t refEnd = refNode->Begin() + refNode->Count();
 		for (size_t i = queryNode->Begin(); i < queryEnd; i++) {
 			for (size_t j = refNode->Begin(); j < refEnd; j++) {
 				double dist = mlpack::EuclideanDistance::Evaluate(dataset.unsafe_col(oldFromNew[i]), dataset.unsafe_col(oldFromNew[j]));
+#if defined  TEST_STATISTICS
+				num_dist_compute++; num_pointwise_dist_compute++;
+#endif
 				if (dist <= dbscan_eps) {
 					found = true; return;
 				}
@@ -230,22 +302,46 @@ void GeDual_DBSCAN::BaseCase_EpsConnect_dual(KDTreeHere* queryNode, KDTreeHere* 
 		std::vector<std::tuple<KDTreeHere*, KDTreeHere*, double>> score_list;
 		//visit LR
 		mlpack::RangeType<double> lr_range = queryNode->Left()->RangeDistance(*refNode->Right());
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (lr_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		} else if (lr_range.Lo() <= dbscan_eps) score_list.push_back(std::make_tuple(queryNode->Left(), refNode->Right(), lr_range.Lo()));
 		//visit LL
 		mlpack::RangeType<double> ll_range = queryNode->Left()->RangeDistance(*refNode->Left());
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (ll_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		} else if (ll_range.Lo() <= dbscan_eps) score_list.push_back(std::make_tuple(queryNode->Left(), refNode->Left(), ll_range.Lo()));
 		//visit RL
 		mlpack::RangeType<double> rl_range = queryNode->Right()->RangeDistance(*refNode->Left());
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (rl_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		} else if (rl_range.Lo() <= dbscan_eps) score_list.push_back(std::make_tuple(queryNode->Right(), refNode->Left(), rl_range.Lo()));
 		//visit RR
 		mlpack::RangeType<double> rr_range = queryNode->Right()->RangeDistance(*refNode->Right());
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (rr_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		} else if (rr_range.Lo() <= dbscan_eps) score_list.push_back(std::make_tuple(queryNode->Right(), refNode->Right(), rr_range.Lo()));
 
@@ -263,11 +359,23 @@ void GeDual_DBSCAN::BaseCase_EpsConnect_dual(KDTreeHere* queryNode, KDTreeHere* 
 		auto nonLeafOne = queryNode->IsLeaf() ? refNode : queryNode;
 
 		mlpack::RangeType<double> r_range = nonLeafOne->Right()->RangeDistance(*leafOne);
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (r_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		}
 		mlpack::RangeType<double> l_range = nonLeafOne->Left()->RangeDistance(*leafOne);
+#if defined  TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (l_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+			num_near_case++;
+#endif
 			found = true; return;
 		}
 		if (r_range.Lo() < l_range.Lo()) {

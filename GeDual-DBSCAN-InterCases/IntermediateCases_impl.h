@@ -1,6 +1,8 @@
 #pragma once
 void GeDual_DBSCAN::InterCase_BothLeaves(KDTreeHere* queryNode, KDTreeHere* refNode) {
-
+#if defined TEST_STATISTICS
+	num_BaseCase++;
+#endif
 	size_t queryEnd = queryNode->Begin() + queryNode->Count();
 	size_t refEnd = refNode->Begin() + refNode->Count();
 
@@ -12,6 +14,9 @@ void GeDual_DBSCAN::InterCase_BothLeaves(KDTreeHere* queryNode, KDTreeHere* refN
 
 }
 void GeDual_DBSCAN::InterCase_QueryLeafRefDense(KDTreeHere* queryNode, KDTreeHere* refNode) {
+#if defined TEST_STATISTICS
+	num_intercase_leafdense++;
+#endif
 	size_t queryEnd = queryNode->Begin() + queryNode->Count();
 	for (size_t i = queryNode->Begin(); i < queryEnd; i++) {
 		size_t queryPoint = oldFromNew[i], refRep = oldFromNew[refNode->Begin()];
@@ -32,6 +37,9 @@ void GeDual_DBSCAN::InterCase_QueryLeafRefDense(KDTreeHere* queryNode, KDTreeHer
 	}
 }
 void GeDual_DBSCAN::InterCase_QueryDenseRefLeaf(KDTreeHere* queryNode, KDTreeHere* refNode) {
+#if defined TEST_STATISTICS
+	num_intercase_denseleaf++;
+#endif
 	size_t refEnd = refNode->Begin() + refNode->Count();
 	for (size_t j = refNode->Begin(); j < refEnd; j++) {
 		size_t refPoint = oldFromNew[j], queryRep = oldFromNew[queryNode->Begin()];
@@ -43,22 +51,40 @@ void GeDual_DBSCAN::InterCase_QueryDenseRefLeaf(KDTreeHere* queryNode, KDTreeHer
 		} else {
 			bool cored = false;
 			BaseCase_EpsMinptsInDense_single(refPoint, queryNode, cored);
-			if (cored) ufset.Union(refPoint, queryRep);
+
+			if (cored) {
+#if defined TEST_STATISTICS
+				num_early_core++;
+#endif
+				ufset.Union(refPoint, queryRep);
+			}
 		}
 	}
 }
 void GeDual_DBSCAN::InterCase_BothDense(KDTreeHere* queryNode, KDTreeHere* refNode) {
+#if defined TEST_STATISTICS
+	num_intercase_bothdense++;
+#endif
 	if (queryNode->Parent() == refNode->Parent())return;
 	size_t queryRep = oldFromNew[queryNode->Begin()], refRep = oldFromNew[refNode->Begin()];
 	if (ufset.Find(queryRep) != ufset.Find(refRep)) {
 		mlpack::RangeType<double> lr_range = queryNode->RangeDistance(*refNode);
+#if defined TEST_STATISTICS
+		num_Score++; num_dist_compute += 2;
+#endif
 		if (lr_range.Hi() <= dbscan_eps) {
+#if defined TEST_STATISTICS
+			num_near_case++;
+#endif
 			ufset.Union(queryRep, refRep);
 		} else if (lr_range.Lo() <= dbscan_eps) {
 			bool found = false;
 			BaseCase_EpsConnect_dual(queryNode, refNode, found);
 			if (found) ufset.Union(queryRep, refRep);
 		}
+#if defined TEST_STATISTICS
+		else num_far_case++;
+#endif
 	}
 
 

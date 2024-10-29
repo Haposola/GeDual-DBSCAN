@@ -110,15 +110,41 @@ public:
 		}
 		auto t5 = ExperimentRun_TimeNow();
 		ofile << dataset.n_cols << ", " << dataset.n_rows << ", " << dbscan_eps << ", " << dbscan_minpts << ", ";
-		ofile << ExperimentRun_TimeCount_s_Seconds(t1, t2) << ", ";// EpsMinpts stack simulation identification time
-		ofile << ExperimentRun_TimeCount_s_Seconds(t2, t3) << ", ";// union-find set pre-clustering
-		ofile << ExperimentRun_TimeCount_s_Seconds(t3, t4) << ", ";// Restore stack-simulated range search
+		ofile << ExperimentRun_TimeCount_s_Seconds(t1, t2) << ", ";// find initial dense nodes time
+		ofile << ExperimentRun_TimeCount_s_Seconds(t2, t3) << ", ";// merge sibling dense nodes time (using eps-connect dual)
+		ofile << ExperimentRun_TimeCount_s_Seconds(t3, t4) << ", ";// Do DBSCAN traversal time
 		ofile << ExperimentRun_TimeCount_s_Seconds(t4, t5) << ", ";// Assign border/noise points
 		ofile << ExperimentRun_TimeCount_s_Seconds(t1, t5) << ", ";// total time
 
-		print_num_final_clusters(ofile);
+		print_statistics(ofile);
 	}
+#if defined TEST_STATISTICS
+private:
+	size_t num_dist_compute = 0;			// #DistCompute= #Pointwise + 2 * #Score
+	size_t num_pointwise_dist_compute = 0;	// 
+	size_t num_leaf_nodes = 0;				// #LeafNodes of KDTree
+	size_t num_BaseCase = 0;				// #BaseCase
+	size_t num_Score = 0;					// #Score= #NearCase + #FarCase + #NormalCase
+	size_t num_near_case = 0;				// cases where Dmax(N1,N2)\le epsilon
+	size_t num_far_case = 0;				// cases where Dmin(N1,N2)\ge epsilon
+	size_t num_early_core = 0;				// # of core points identified before it is visited as a query point
+	size_t num_samecluster_skip = 0;		// # of skipped distance computation due to ufset.Find(p1)== ufset.Find(p2)
 
+	size_t num_initial_dense_nodes = 0;
+	size_t num_initial_onecluster_nodes = 0;
+	size_t num_initial_cores = 0;
+
+	size_t num_intercase_leafdense = 0;
+	size_t num_intercase_denseleaf = 0;
+	size_t num_intercase_bothdense = 0;
+
+	size_t num_epsminpts_indense = 0;
+	size_t num_epsconnect_single = 0;
+	size_t num_epsconnect_dual = 0;
+
+	size_t num_node_toAllCore = 0;
+	size_t num_node_toDense = 0;
+#endif
 private:
 	arma::Mat<double>& dataset;
 	double dbscan_eps;
@@ -153,8 +179,20 @@ private:
 	mlpack::UnionFind ufset;
 
 	void DoSetDescOnecluster(KDTreeHere* node, bool isAllcore) {
+#if defined TEST_STATISTICS
+		if (isAllcore) {
+			node->Stat().setDense();
+			num_initial_dense_nodes++;
+		} else {
+			node->Stat().setOnecluster();
+			num_initial_onecluster_nodes++;
+		}
+
+#else 
 		if (isAllcore) node->Stat().setDense();
 		else node->Stat().setOnecluster();
+#endif 
+
 		if (!node->IsLeaf()) {
 			DoSetDescOnecluster(node->Left(), isAllcore);
 			DoSetDescOnecluster(node->Right(), isAllcore);
@@ -171,6 +209,9 @@ private:
 					//Merge all points in node as one cluster; merge with node->Begin() is enough
 					ufset.Union(oldFromNew[node->Begin()], oldFromNew[i]);
 					isCore[oldFromNew[i]] = true;
+#if defined TEST_STATISTICS
+					num_initial_cores++;
+#endif
 					rangesearch_rightstart[i] = nodeEnd;
 				}
 
@@ -199,7 +240,13 @@ private:
 		DoMergeSiblingDense(node->Right());
 		if (node->Left()->Stat().isDense() && node->Right()->Stat().isDense()) {
 			mlpack::RangeType<double> lr_range = node->Left()->RangeDistance(*node->Right());
+#if defined  TEST_STATISTICS
+			num_Score++; num_dist_compute += 2;
+#endif 
 			if (lr_range.Hi() <= dbscan_eps) {
+#if defined  TEST_STATISTICS
+				num_near_case++;
+#endif 
 				ufset.Union(oldFromNew[node->Left()->Begin()], oldFromNew[node->Right()->Begin()]);
 				node->Stat().setDense();
 			} else if (lr_range.Lo() <= dbscan_eps) {
@@ -208,6 +255,9 @@ private:
 				if (found) {
 					ufset.Union(oldFromNew[node->Left()->Begin()], oldFromNew[node->Right()->Begin()]);
 					node->Stat().setDense();
+#if defined  TEST_STATISTICS
+					num_initial_dense_nodes++;
+#endif 
 				}
 			}
 		}
@@ -238,13 +288,45 @@ private:
 	inline void NodeTransite_toDense(KDTreeHere* node);
 	inline void NodeTransite_toDense(KDTreeHere* queryNode, KDTreeHere* node);
 
+	void count_leaf_nodes(KDTreeHere* node) {
+		if (node->IsLeaf())num_leaf_nodes++;
+		else {
+			count_leaf_nodes(node->Left());
+			count_leaf_nodes(node->Right());
 
-	void print_num_final_clusters(std::ostream& ofile) {
+		}
+	}
+
+	void print_statistics(std::ostream& ofile) {
 		int numcore = 0;
 		for (size_t i = 0; i < dataset.n_cols; i++) {
 			if (isCore[i]) numcore++;
 		}
 		ofile << numcore << ", ";
+#if defined  TEST_STATISTICS
+		count_leaf_nodes(searchTree);
+		ofile << num_dist_compute << ", "
+			<< num_pointwise_dist_compute << ", "
+			<< num_leaf_nodes << ","
+			<< num_BaseCase << ", "
+			<< num_Score << ", "
+			<< num_near_case << ", "
+			<< num_far_case << ", "
+			<< num_early_core << ", "
+			<< num_samecluster_skip << ", "
+			<< num_initial_dense_nodes << ", "
+			<< num_initial_onecluster_nodes << ", "
+			<< num_initial_cores << ", "
+			<< num_intercase_leafdense << ", "
+			<< num_intercase_denseleaf << ", "
+			<< num_intercase_bothdense << ", "
+			<< num_epsminpts_indense << ", "
+			<< num_epsconnect_single << ", "
+			<< num_epsconnect_dual << ", "
+			<< num_node_toAllCore<<", "
+			<< num_node_toDense<<", ";
+
+#endif 
 		std::unordered_map<int, std::vector<int>> mapIndexReps;
 		int final_clusters = 0;
 		for (int i = 0; i < dataset.n_cols; i++) {
